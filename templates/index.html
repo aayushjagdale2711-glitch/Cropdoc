@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="day">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>CropScan | Crop Health Diagnostics</title>
+
+  <meta
+    name="description"
+    content="Upload a crop image to check for visible damage, get a diagnosis, severity estimate, and prevention guidance."
+  />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap"
+    rel="stylesheet"
+  />
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+
+<body>
+  <!-- ============================================================
+       ANIMATED AMBIENT SKY BACKGROUND (day / night / weather)
+       ============================================================ -->
+  <div class="ambient-bg" aria-hidden="true">
+    <div class="ambient-gradient"></div>
+    <div class="ambient-sun"></div>
+    <div class="ambient-moon"></div>
+    <div class="ambient-stars"></div>
+
+    <div class="ambient-clouds">
+      <span class="cloud cloud-1"></span>
+      <span class="cloud cloud-2"></span>
+      <span class="cloud cloud-3"></span>
+      <span class="cloud cloud-4"></span>
+    </div>
+
+    <div class="ambient-rain" id="ambient-rain"></div>
+    <div class="ambient-glow"></div>
+  </div>
+
+  <div class="page-shell">
+
+    <!-- ============================================================
+         HEADER
+         ============================================================ -->
+    <header class="site-header">
+      <a href="#" class="brand" aria-label="CropScan home">
+        <span class="brand-icon" aria-hidden="true">
+          <i data-lucide="scan-line"></i>
+        </span>
+
+        <span class="brand-text">
+          <strong>CropScan</strong>
+          <small>Plant Health Intelligence</small>
+        </span>
+      </a>
+
+      <div class="header-actions">
+
+        <!-- Live weather chip -->
+        <button
+          id="weather-widget"
+          class="weather-widget"
+          type="button"
+          aria-live="polite"
+          aria-label="Local weather conditions"
+          title="Refresh weather"
+        >
+          <span class="weather-icon-wrap">
+            <i id="weather-icon" data-lucide="loader-circle"></i>
+          </span>
+
+          <span class="weather-text">
+            <strong id="weather-temp">--°</strong>
+            <small id="weather-location">Fetching weather…</small>
+          </span>
+        </button>
+
+        <!-- Day / Night switch -->
+        <button
+          id="theme-toggle"
+          class="theme-toggle"
+          type="button"
+          aria-label="Switch between day and night mode"
+          title="Toggle day / night"
+        >
+          <span class="theme-toggle-track">
+            <span class="theme-toggle-thumb">
+              <i id="theme-icon" data-lucide="sun"></i>
+            </span>
+          </span>
+        </button>
+
+        <div class="header-status">
+          <span class="status-dot"></span>
+          <span id="engine-status-text">Engine ready</span>
+        </div>
+      </div>
+    </header>
+
+    <main>
+
+      <!-- ============================================================
+           HERO
+           ============================================================ -->
+      <section class="hero-section reveal">
+        <div class="hero-content">
+          <div class="eyebrow">
+            <i data-lucide="leaf"></i>
+            AI-assisted crop assessment
+          </div>
+
+          <h1>Understand your crop&rsquo;s condition before damage spreads.</h1>
+
+          <p>
+            Upload a clear image of your crop or plant. CropScan analyzes visible
+            symptoms and provides a damage assessment, severity level, and practical
+            prevention guidance.
+          </p>
+
+          <!-- Field advisory strip driven by live weather -->
+          <div id="field-advisory" class="field-advisory">
+            <span class="advisory-icon">
+              <i id="advisory-icon" data-lucide="cloud-sun"></i>
+            </span>
+            <div class="advisory-body">
+              <strong id="advisory-title">Checking field conditions…</strong>
+              <span id="advisory-text">
+                We use your local weather to tailor spraying and scouting advice.
+              </span>
+            </div>
+          </div>
+
+          <div class="feature-grid" aria-label="CropScan features">
+            <div class="feature-item">
+              <span class="feature-icon">
+                <i data-lucide="scan-search"></i>
+              </span>
+              <span>Image-based crop scan</span>
+            </div>
+
+            <div class="feature-item">
+              <span class="feature-icon">
+                <i data-lucide="shield-check"></i>
+              </span>
+              <span>Damage assessment</span>
+            </div>
+
+            <div class="feature-item">
+              <span class="feature-icon">
+                <i data-lucide="sprout"></i>
+              </span>
+              <span>Prevention guidance</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="hero-visual" aria-hidden="true">
+          <div class="visual-orb orb-one"></div>
+          <div class="visual-orb orb-two"></div>
+
+          <div class="scan-card">
+            <div class="scan-card-header">
+              <span class="scan-card-label">Crop status</span>
+              <span class="live-pill">
+                <span></span>
+                Live scan
+              </span>
+            </div>
+
+            <div class="plant-illustration">
+              <div class="plant-soil"></div>
+              <div class="plant-stem"></div>
+              <div class="plant-leaf leaf-left"></div>
+              <div class="plant-leaf leaf-right"></div>
+              <div class="plant-leaf leaf-top"></div>
+              <div class="scan-grid"></div>
+              <div class="scan-line"></div>
+            </div>
+
+            <div class="scan-card-footer">
+              <div>
+                <span>Analysis type</span>
+                <strong>Visual diagnostics</strong>
+              </div>
+
+              <i data-lucide="radar"></i>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================
+           DIAGNOSTIC WORKSPACE
+           ============================================================ -->
+      <section class="diagnostic-section reveal" aria-labelledby="diagnostic-title">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">New diagnosis</p>
+            <h2 id="diagnostic-title">Scan your crop image</h2>
+          </div>
+
+          <p class="section-helper">
+            For the best assessment, capture the affected leaf, stem, fruit, or crop
+            area in clear natural light.
+          </p>
+        </div>
+
+        <div class="diagnostic-layout">
+
+          <!-- ---------- PANEL 1 : IMAGE ---------- -->
+          <div class="upload-panel">
+            <div class="panel-heading">
+              <span class="step-number">01</span>
+              <div>
+                <h3>Capture or upload image</h3>
+                <p>Use your camera directly or upload an image (PNG, JPG, WEBP).</p>
+              </div>
+            </div>
+
+            <div class="acquisition-methods" role="tablist">
+              <button
+                id="tab-upload-btn"
+                class="method-tab active"
+                type="button"
+                role="tab"
+                aria-selected="true"
+              >
+                <i data-lucide="upload-cloud"></i>
+                File upload
+              </button>
+
+              <button
+                id="tab-camera-btn"
+                class="method-tab"
+                type="button"
+                role="tab"
+                aria-selected="false"
+              >
+                <i data-lucide="camera"></i>
+                Device camera
+              </button>
+
+              <span class="tab-indicator" id="tab-indicator"></span>
+            </div>
+
+            <!-- Upload drop area -->
+            <div id="upload-mode-container" class="mode-container">
+              <div
+                id="drop-zone"
+                class="drop-zone"
+                role="button"
+                tabindex="0"
+                aria-label="Upload crop image"
+              >
+                <input
+                  id="file-input"
+                  type="file"
+                  accept="image/png,image/jpeg,image/jpg,image/webp"
+                  hidden
+                />
+
+                <div class="upload-illustration">
+                  <span class="upload-icon-ring">
+                    <i data-lucide="image-up"></i>
+                  </span>
+                </div>
+
+                <h4>Drag and drop your image here</h4>
+                <p>or choose a file from your device</p>
+
+                <button id="browse-btn" class="secondary-btn" type="button">
+                  <i data-lucide="folder-open"></i>
+                  Browse images
+                </button>
+
+                <span class="upload-note">
+                  <i data-lucide="info"></i>
+                  Upload one clear image at a time
+                </span>
+              </div>
+            </div>
+
+            <!-- Camera streaming area -->
+            <div id="camera-mode-container" class="mode-container hidden">
+              <div id="camera-viewport-container" class="camera-viewport-container">
+                <video id="camera-stream" autoplay playsinline muted></video>
+                <canvas id="camera-canvas" class="hidden"></canvas>
+
+                <div class="camera-frame-guides" aria-hidden="true">
+                  <span></span><span></span><span></span><span></span>
+                </div>
+
+                <div id="camera-flash" class="camera-flash" aria-hidden="true"></div>
+
+                <div id="camera-placeholder" class="camera-placeholder">
+                  <i data-lucide="camera"></i>
+                  <p>Camera is off</p>
+                  <button id="start-camera-btn" class="secondary-btn" type="button">
+                    <i data-lucide="video"></i>
+                    Start camera
+                  </button>
+                </div>
+
+                <div class="camera-controls-overlay">
+                  <button
+                    id="switch-camera-btn"
+                    class="glass-action-btn"
+                    type="button"
+                    aria-label="Switch camera"
+                  >
+                    <i data-lucide="switch-camera"></i>
+                  </button>
+
+                  <button
+                    id="shutter-btn"
+                    class="shutter-trigger"
+                    type="button"
+                    aria-label="Capture snapshot"
+                  >
+                    <span class="shutter-inner"></span>
+                  </button>
+
+                  <button
+                    id="stop-camera-btn"
+                    class="glass-action-btn"
+                    type="button"
+                    aria-label="Stop camera"
+                  >
+                    <i data-lucide="camera-off"></i>
+                  </button>
+                </div>
+              </div>
+
+              <p class="camera-instruction-note">
+                Align the plant symptoms inside the viewport and press the shutter.
+              </p>
+            </div>
+
+            <!-- Preview -->
+            <div id="preview-container" class="preview-container hidden">
+              <div class="preview-image-wrap">
+                <img id="image-preview" src="" alt="Selected crop preview" />
+
+                <div class="preview-overlay">
+                  <span>
+                    <i data-lucide="image"></i>
+                    Image ready for analysis
+                  </span>
+                </div>
+              </div>
+
+              <div class="preview-details">
+                <div>
+                  <p class="preview-label">Selected image</p>
+                  <p id="file-name" class="file-name">crop-image.jpg</p>
+                </div>
+
+                <button
+                  id="remove-btn"
+                  class="icon-btn"
+                  type="button"
+                  aria-label="Remove image"
+                >
+                  <i data-lucide="trash-2"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ---------- PANEL 2 : CONTEXT ---------- -->
+          <div class="details-panel">
+            <div class="panel-heading">
+              <span class="step-number">02</span>
+              <div>
+                <h3>Add crop context</h3>
+                <p>Optional details can help improve your diagnosis.</p>
+              </div>
+            </div>
+
+            <label for="description-input" class="input-label">
+              What symptoms do you notice?
+            </label>
+
+            <textarea
+              id="description-input"
+              placeholder="Example: Brown spots started appearing on the lower leaves three days ago after heavy rainfall."
+              maxlength="500"
+            ></textarea>
+
+            <div class="textarea-footer">
+              <span>
+                <i data-lucide="message-square-text"></i>
+                Include crop type, symptoms, timing, or weather conditions.
+              </span>
+              <span id="char-count">0 / 500</span>
+            </div>
+
+            <div class="quick-chips" aria-label="Quick symptom suggestions">
+              <button class="chip" type="button" data-chip="Yellowing leaves">Yellowing leaves</button>
+              <button class="chip" type="button" data-chip="Brown / black spots">Brown spots</button>
+              <button class="chip" type="button" data-chip="Wilting despite watering">Wilting</button>
+              <button class="chip" type="button" data-chip="Insect damage visible">Insect damage</button>
+              <button class="chip" type="button" data-chip="White powdery coating">Powdery coating</button>
+            </div>
+
+            <div class="scan-tips">
+              <div class="tips-title">
+                <i data-lucide="lightbulb"></i>
+                Tips for an accurate scan
+              </div>
+
+              <ul>
+                <li>Take the photo in daylight where possible.</li>
+                <li>Keep the affected crop area in focus.</li>
+                <li>Avoid shadows, blur, and very distant photos.</li>
+              </ul>
+            </div>
+
+            <button id="analyze-btn" class="primary-btn" type="button" disabled>
+              <i data-lucide="scan"></i>
+              <span id="btn-text">Run diagnostics</span>
+            </button>
+
+            <!-- Smooth progress feedback -->
+            <div id="analysis-progress" class="analysis-progress hidden">
+              <div class="progress-track">
+                <div class="progress-fill" id="progress-fill"></div>
+              </div>
+              <p class="progress-label" id="progress-label">Preparing image…</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================
+           RESULTS
+           ============================================================ -->
+      <section id="results-section" class="results-section hidden" aria-live="polite">
+        <div class="results-heading">
+          <div>
+            <p class="section-kicker">Diagnostic report</p>
+            <h2>Crop scan results</h2>
+          </div>
+
+          <button id="scan-again-btn" class="text-btn" type="button">
+            <i data-lucide="refresh-cw"></i>
+            Scan another image
+          </button>
+        </div>
+
+        <div id="results-content" class="results-content"></div>
+
+        <!-- Conversational follow-up -->
+        <div id="followup-container" class="followup-container hidden">
+          <div class="followup-header-wrapper">
+            <div class="followup-badge">
+              <i data-lucide="sparkles"></i> AI consultation
+            </div>
+
+            <h3>Agronomic chat assistant</h3>
+
+            <p>
+              Ask follow-up questions about this diagnosis (e.g. appropriate chemical
+              dosage instructions, alternative organic treatments, or companion crop risks).
+            </p>
+          </div>
+
+          <div id="chat-thread" class="chat-thread-box"></div>
+
+          <div class="chat-suggestions" id="chat-suggestions">
+            <button class="chip" type="button" data-ask="What dosage should I use and how often?">Dosage &amp; frequency</button>
+            <button class="chip" type="button" data-ask="Give me a fully organic treatment plan.">Organic plan</button>
+            <button class="chip" type="button" data-ask="Can this spread to my other crops?">Spread risk</button>
+            <button class="chip" type="button" data-ask="Is it safe to spray in current weather?">Spray safety</button>
+          </div>
+
+          <form id="followup-input-form" class="followup-chat-form">
+            <input
+              type="text"
+              id="followup-text-field"
+              placeholder="Ask an agronomist follow-up question…"
+              required
+              autocomplete="off"
+            />
+
+            <button id="send-followup-btn" class="chat-submit-btn" type="submit" aria-label="Send">
+              <i data-lucide="send"></i>
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ============================================================
+           PRIVACY
+           ============================================================ -->
+      <section class="privacy-note reveal">
+        <span class="privacy-icon">
+          <i data-lucide="lock-keyhole"></i>
+        </span>
+
+        <div>
+          <strong>Your crop image is used only for diagnostics.</strong>
+          <p>
+            Uploads are sent securely to the diagnostic engine for crop-health
+            analysis. Review the result before taking action in the field.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 CropScan. Crop health intelligence for better decisions.</p>
+
+      <p>
+        Results are advisory and should be verified with an agricultural expert for
+        high-severity cases.
+      </p>
+    </footer>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast hidden" role="alert">
+    <i data-lucide="circle-alert"></i>
+    <span id="toast-message"></span>
+  </div>
+
+  <!-- Scroll to top -->
+  <button id="scroll-top-btn" class="scroll-top-btn hidden" type="button" aria-label="Back to top">
+    <i data-lucide="arrow-up"></i>
+  </button>
+
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
