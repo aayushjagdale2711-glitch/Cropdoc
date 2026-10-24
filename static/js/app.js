@@ -9,6 +9,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const FOLLOWUP_ENDPOINT = "/api/followup";
   const WEATHER_ENDPOINT = "https://api.open-meteo.com/v1/forecast";
   const GEOCODE_ENDPOINT = "https://api.bigdatacloud.net/data/reverse-geocode-client";
+  const IP_GEOLOCATION_ENDPOINT = "https://ipapi.co/json/";
   const PDF_LIBRARY_URL =
     "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
 
@@ -112,11 +113,19 @@ document.addEventListener("DOMContentLoaded", () => {
      ============================================================ */
 
   function safeGet(key) {
-    try { return localStorage.getItem(key); } catch (e) { return null; }
+    try {
+      return localStorage.getItem(key);
+    } catch (e) {
+      return null;
+    }
   }
 
   function safeSet(key, value) {
-    try { localStorage.setItem(key, value); } catch (e) { /* ignore */ }
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+      /* ignore */
+    }
   }
 
   function createLucideIcon(iconName, className = "") {
@@ -165,7 +174,6 @@ document.addEventListener("DOMContentLoaded", () => {
       themeManuallySet = true;
     }
 
-    // Night overrides the weather icon tone
     refreshWeatherVisual();
   }
 
@@ -194,7 +202,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Re-check clock every 5 minutes (only when user hasn't locked a theme)
   setInterval(() => {
     if (!themeManuallySet) applyTheme(getTimeBasedTheme(), false);
   }, 300000);
@@ -251,7 +258,7 @@ document.addEventListener("DOMContentLoaded", () => {
         tone: "",
         icon: "cloud-sun",
         title: "Field conditions unavailable",
-        text: "Enable location access to get weather-aware spraying and scouting advice."
+        text: "Weather data could not be loaded. Click the weather widget to retry."
       };
     }
 
@@ -338,7 +345,14 @@ document.addEventListener("DOMContentLoaded", () => {
     const info = mapWeatherCode(weatherState.code, isNight);
 
     weatherWidget.classList.remove(
-      "is-loading", "w-clear", "w-cloud", "w-rain", "w-storm", "w-snow", "w-fog", "w-night"
+      "is-loading",
+      "w-clear",
+      "w-cloud",
+      "w-rain",
+      "w-storm",
+      "w-snow",
+      "w-fog",
+      "w-night"
     );
     weatherWidget.classList.add(info.cls);
 
@@ -356,7 +370,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     document.body.classList.remove(
-      "weather-rain", "weather-storm", "weather-snow", "weather-fog", "weather-cloud"
+      "weather-rain",
+      "weather-storm",
+      "weather-snow",
+      "weather-fog",
+      "weather-cloud"
     );
     if (info.body) document.body.classList.add(info.body);
 
@@ -460,17 +478,82 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  function initWeather() {
-    if (!navigator.geolocation) {
-      fetchWeather(28.6139, 77.209, "New Delhi");
+  /**
+   * Get the user's approximate location from their IP address.
+   * Returns { latitude, longitude, city } or null on failure.
+   */
+  async function getLocationByIP() {
+    try {
+      const res = await fetch(IP_GEOLOCATION_ENDPOINT);
+      if (!res.ok) throw new Error("IP geolocation failed");
+      const data = await res.json();
+
+      if (data && data.latitude && data.longitude) {
+        return {
+          latitude: data.latitude,
+          longitude: data.longitude,
+          city: data.city || data.region || data.country_name || null
+        };
+      }
+
+      throw new Error("No coordinates in IP response");
+    } catch (e) {
+      // Try fallback IP service
+      try {
+        const fallbackRes = await fetch("https://ip-api.com/json/?fields=lat,lon,city,regionName,country");
+        if (!fallbackRes.ok) throw new Error("fallback IP geolocation failed");
+        const fallbackData = await fallbackRes.json();
+
+        if (fallbackData && fallbackData.lat && fallbackData.lon) {
+          return {
+            latitude: fallbackData.lat,
+            longitude: fallbackData.lon,
+            city: fallbackData.city || fallbackData.regionName || fallbackData.country || null
+          };
+        }
+      } catch (fallbackError) {
+        /* both services failed */
+      }
+
+      return null;
+    }
+  }
+
+  /**
+   * Initialize weather using a layered strategy:
+   * 1. Try browser Geolocation API (most accurate)
+   * 2. Fall back to IP-based geolocation (automatic, no permission needed)
+   * 3. Fall back to a hardcoded default (New Delhi)
+   */
+  async function initWeather() {
+    // Strategy 1: Browser geolocation (requires user permission)
+    if (navigator.geolocation) {
+      try {
+        const position = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            timeout: 6000,
+            maximumAge: 900000,
+            enableHighAccuracy: false
+          });
+        });
+
+        await fetchWeather(position.coords.latitude, position.coords.longitude, null);
+        return;
+      } catch (geoError) {
+        // Permission denied or timeout — fall through to IP lookup
+      }
+    }
+
+    // Strategy 2: IP-based geolocation (no permission required)
+    const ipLocation = await getLocationByIP();
+
+    if (ipLocation) {
+      await fetchWeather(ipLocation.latitude, ipLocation.longitude, ipLocation.city);
       return;
     }
 
-    navigator.geolocation.getCurrentPosition(
-      (pos) => fetchWeather(pos.coords.latitude, pos.coords.longitude, null),
-      () => fetchWeather(28.6139, 77.209, "New Delhi"),
-      { timeout: 8000, maximumAge: 900000, enableHighAccuracy: false }
-    );
+    // Strategy 3: Hardcoded fallback
+    await fetchWeather(28.6139, 77.209, "New Delhi");
   }
 
   initWeather();
@@ -785,7 +868,6 @@ document.addEventListener("DOMContentLoaded", () => {
       imagePreview.src = dataUrl;
       fileName.textContent = file.name;
 
-      // Cache base64 and mime for follow-up calls
       const parts = extractBase64FromDataUrl(dataUrl);
       currentImageBase64 = parts.base64;
       currentImageMime = parts.mime || file.type || "image/jpeg";
@@ -1331,7 +1413,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const thinking = appendThinkingBubble();
 
-    // Ensure base64/mime are available (fallback: re-extract from preview)
     if ((!currentImageBase64 || !currentImageMime) && imagePreview && imagePreview.src) {
       const parts = extractBase64FromDataUrl(imagePreview.src);
       currentImageBase64 = currentImageBase64 || parts.base64;
@@ -1343,13 +1424,11 @@ document.addEventListener("DOMContentLoaded", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          // Keys MUST match what app.py's /api/followup reads
           message: question,
           image: currentImageBase64,
           mime_type: currentImageMime,
           previous_diagnosis: currentDiagnosisData,
           chat_history: chatHistory,
-          // Extras (ignored by backend today, available for future use)
           description: descriptionInput.value.trim() || null,
           weather: weatherState
             ? {
@@ -1571,7 +1650,9 @@ document.addEventListener("DOMContentLoaded", () => {
       doc.text("Crop Health Diagnostic Report", margin, 21);
 
       doc.setFontSize(9);
-      doc.text(formatDateTime(new Date()), pageWidth - margin, 17, { align: "right" });
+      doc.text(formatDateTime(new Date()), pageWidth - margin, 17, {
+        align: "right"
+      });
 
       y = 40;
 
@@ -1694,14 +1775,25 @@ document.addEventListener("DOMContentLoaded", () => {
         ["Environmental factors", currentDiagnosisData.environmental_factors],
         ["Recommended actions", currentDiagnosisData.next_steps],
         ["Organic / biological solutions", currentDiagnosisData.organic_solutions],
-        ["Chemical / conventional solutions", currentDiagnosisData.chemical_solutions],
+        [
+          "Chemical / conventional solutions",
+          currentDiagnosisData.chemical_solutions
+        ],
         ["Prevention techniques", currentDiagnosisData.prevention_techniques],
         ["Follow-up considerations", currentDiagnosisData.follow_up_questions]
       ];
 
       listSections.forEach(([title, items]) => {
         if (Array.isArray(items) && items.length > 0) {
-          y = addPdfListSection(doc, title, items, margin, y, contentWidth, pageHeight);
+          y = addPdfListSection(
+            doc,
+            title,
+            items,
+            margin,
+            y,
+            contentWidth,
+            pageHeight
+          );
         }
       });
 
@@ -1757,7 +1849,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const disclaimerText =
         "This report is generated using AI-assisted crop image analysis. AI predictions can contain mistakes. Review the result carefully and consult a qualified agricultural expert before taking action, especially for serious crop damage.";
 
-      const disclaimerLines = doc.splitTextToSize(disclaimerText, contentWidth - 12);
+      const disclaimerLines = doc.splitTextToSize(
+        disclaimerText,
+        contentWidth - 12
+      );
       const disclaimerHeight = 12 + disclaimerLines.length * 4.5;
 
       doc.roundedRect(margin, y, contentWidth, disclaimerHeight, 3, 3, "F");
@@ -1775,7 +1870,9 @@ document.addEventListener("DOMContentLoaded", () => {
       addPdfFooters(doc, pageWidth, pageHeight, margin);
 
       // ---------------- SAVE ----------------
-      const safeName = sanitizeFileName(currentFile.name.replace(/\.[^/.]+$/, ""));
+      const safeName = sanitizeFileName(
+        currentFile.name.replace(/\.[^/.]+$/, "")
+      );
       const dateStamp = new Date().toISOString().slice(0, 10);
 
       doc.save(`CropScan-Report-${safeName}-${dateStamp}.pdf`);
@@ -1827,14 +1924,30 @@ document.addEventListener("DOMContentLoaded", () => {
     doc.text(title, x, y);
   }
 
-  function addWrappedText(doc, text, x, y, width, fontSize = 10, lineHeight = 5) {
+  function addWrappedText(
+    doc,
+    text,
+    x,
+    y,
+    width,
+    fontSize = 10,
+    lineHeight = 5
+  ) {
     doc.setFontSize(fontSize);
     const lines = doc.splitTextToSize(String(text), width);
     doc.text(lines, x, y);
     return y + lines.length * lineHeight;
   }
 
-  function addPdfKeyValueSection(doc, title, items, margin, y, contentWidth, pageHeight) {
+  function addPdfKeyValueSection(
+    doc,
+    title,
+    items,
+    margin,
+    y,
+    contentWidth,
+    pageHeight
+  ) {
     y = ensurePdfSpace(doc, y, 30, pageHeight, margin);
     addPdfSectionTitle(doc, title, margin, y);
     y += 7;
@@ -1865,7 +1978,15 @@ document.addEventListener("DOMContentLoaded", () => {
     return y;
   }
 
-  function addPdfListSection(doc, title, items, margin, y, contentWidth, pageHeight) {
+  function addPdfListSection(
+    doc,
+    title,
+    items,
+    margin,
+    y,
+    contentWidth,
+    pageHeight
+  ) {
     y = ensurePdfSpace(doc, y, 30, pageHeight, margin);
     addPdfSectionTitle(doc, title, margin, y);
     y += 7;
@@ -1875,7 +1996,8 @@ document.addEventListener("DOMContentLoaded", () => {
     doc.setTextColor(23, 35, 26);
 
     items.forEach((item) => {
-      if (item === null || item === undefined || String(item).trim() === "") return;
+      if (item === null || item === undefined || String(item).trim() === "")
+        return;
 
       const bullet = "• ";
       const lines = doc.splitTextToSize(String(item), contentWidth - 7);
@@ -1891,7 +2013,15 @@ document.addEventListener("DOMContentLoaded", () => {
     return y + 2;
   }
 
-  function addPdfTextSection(doc, title, text, margin, y, contentWidth, pageHeight) {
+  function addPdfTextSection(
+    doc,
+    title,
+    text,
+    margin,
+    y,
+    contentWidth,
+    pageHeight
+  ) {
     y = ensurePdfSpace(doc, y, 30, pageHeight, margin);
     addPdfSectionTitle(doc, title, margin, y);
     y += 7;
@@ -1954,11 +2084,20 @@ document.addEventListener("DOMContentLoaded", () => {
       doc.setFontSize(7.5);
       doc.setTextColor(123, 136, 126);
 
-      doc.text("CropScan • AI-assisted crop health report", margin, pageHeight - 6);
+      doc.text(
+        "CropScan • AI-assisted crop health report",
+        margin,
+        pageHeight - 6
+      );
 
-      doc.text(`Page ${page} of ${pageCount}`, pageWidth - margin, pageHeight - 6, {
-        align: "right"
-      });
+      doc.text(
+        `Page ${page} of ${pageCount}`,
+        pageWidth - margin,
+        pageHeight - 6,
+        {
+          align: "right"
+        }
+      );
     }
   }
 
@@ -1992,7 +2131,9 @@ document.addEventListener("DOMContentLoaded", () => {
           let height = image.naturalHeight;
 
           if (!width || !height) {
-            reject(new Error("The crop image dimensions could not be detected."));
+            reject(
+              new Error("The crop image dimensions could not be detected.")
+            );
             return;
           }
 
@@ -2022,7 +2163,9 @@ document.addEventListener("DOMContentLoaded", () => {
       };
 
       image.onerror = () => {
-        reject(new Error("The crop image could not be converted for the PDF."));
+        reject(
+          new Error("The crop image could not be converted for the PDF.")
+        );
       };
 
       image.src = imageElement.src;
@@ -2030,7 +2173,11 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function calculatePdfImageSize(imageWidth, imageHeight, maxWidth, maxHeight) {
-    const ratio = Math.min(maxWidth / imageWidth, maxHeight / imageHeight, 1);
+    const ratio = Math.min(
+      maxWidth / imageWidth,
+      maxHeight / imageHeight,
+      1
+    );
     return {
       width: imageWidth * ratio,
       height: imageHeight * ratio
@@ -2088,7 +2235,10 @@ document.addEventListener("DOMContentLoaded", () => {
     if (normalizedSeverity === "high" || normalizedSeverity === "severe") {
       badge.classList.add("severity-high");
       badge.textContent = "High severity";
-    } else if (normalizedSeverity === "medium" || normalizedSeverity === "moderate") {
+    } else if (
+      normalizedSeverity === "medium" ||
+      normalizedSeverity === "moderate"
+    ) {
       badge.classList.add("severity-medium");
       badge.textContent = "Medium severity";
     } else {
